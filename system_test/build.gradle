@@ -7,6 +7,7 @@ dependencies {
 	testCompile group: 'junit', name: 'junit', version: '4.12'
 	testCompile group: 'org.mockito', name: 'mockito-all', version: '1.9.5'
 
+	testCompile group: 'org.glassfish.jersey.bundles.repackaged', name: 'jersey-guava', version: '2.6'
 	testCompile group: 'org.apache.kafka', name: 'connect-runtime', version: '2.1.0'
 	testCompile group: 'org.apache.kafka', name: 'connect-json', version: '2.1.0'
 	testCompile group: 'org.apache.kafka', name: 'kafka_2.11', version: '2.1.0'
