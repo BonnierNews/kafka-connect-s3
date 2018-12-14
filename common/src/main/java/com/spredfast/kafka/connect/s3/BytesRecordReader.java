@@ -7,12 +7,15 @@ import java.nio.ByteBuffer;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.connect.errors.DataException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.spredfast.kafka.connect.s3.RecordReader;
 
 /**
  * Helper for reading raw length encoded records from a chunk file. Not thread safe.
  */
 public class BytesRecordReader implements RecordReader {
+	private static final Logger log = LoggerFactory.getLogger(BytesRecordReader.class);
 
 	private final ByteBuffer lenBuffer = ByteBuffer.allocate(4);
 
@@ -33,64 +36,61 @@ public class BytesRecordReader implements RecordReader {
 	@Override
 	public ConsumerRecord<byte[], byte[]> read(String topic, int partition, long offset, BufferedInputStream data) throws IOException {
 		final byte[] key;
-		final int valSize;
+		final Integer valSize;
 		if (includesKeys) {
-			// if at the end of the stream, return null
-			final Integer keySize = readLen(topic, partition, offset, data);
+			final Integer keySize = readLen(data);
 			if (keySize == null) {
+				if(log.isWarnEnabled())
+				log.warn("Failed to calculate key size, skipping. Topic: {}, Partition: {}, Offset: {}", topic, partition, offset);
 				return null;
 			}
-			key = readBytes(keySize, data, topic, partition, offset);
-			valSize = readValueLen(topic, partition, offset, data);
+			key = readBytes(keySize, data);
+			if(key == null) {
+				log.warn("Key not found, skipping. Topic: {}, Partition: {}, Offset: {}", topic, partition, offset);
+				return null;
+			}
+
+			valSize = readLen(data);
+			if(valSize == null) {
+				log.warn("Failed to calculate value size, skipping. Topic: {}, Partition: {}, Offset: {}", topic, partition, offset);
+				return null;
+			}
 		} else {
 			key = null;
-			Integer vSize = readLen(topic, partition, offset, data);
+			Integer vSize = readLen(data);
 			if (vSize == null) {
+				log.warn("Failed to calculate value size, skipping. Topic: {}, Partition: {}, Offset: {}", topic, partition, offset);
 				return null;
 			}
 			valSize = vSize;
 		}
 
-		final byte[] value = readBytes(valSize, data, topic, partition, offset);
+		final byte[] value = readBytes(valSize, data);
 
 		return new ConsumerRecord<>(topic, partition, offset, key, value);
 	}
 
-	private int readValueLen(String topic, int partition, long offset, InputStream data) throws IOException {
-		final Integer len = readLen(topic, partition, offset, data);
-		if (len == null) {
-			die(topic, partition, offset);
-		}
-		return len;
-	}
-
-	private byte[] readBytes(int keySize, InputStream data, String topic, int partition, long offset) throws IOException {
-		final byte[] bytes = new byte[keySize];
+	private byte[] readBytes(int size, InputStream data) throws IOException {
+		final byte[] bytes = new byte[size];
 		int read = 0;
-		while (read < keySize) {
-			final int readNow = data.read(bytes, read, keySize - read);
+		while (read < size) {
+			final int readNow = data.read(bytes, read, size - read);
 			if (readNow == -1) {
-				die(topic, partition, offset);
+				return null;
 			}
 			read += readNow;
 		}
 		return bytes;
 	}
 
-	private Integer readLen(String topic, int partition, long offset, InputStream data) throws IOException {
+	private Integer readLen(InputStream data) throws IOException {
 		lenBuffer.rewind();
 		int read = data.read(lenBuffer.array(), 0, 4);
 		if (read == -1) {
 			return null;
 		} else if (read != 4) {
-			die(topic, partition, offset);
+			return null;
 		}
 		return lenBuffer.getInt();
 	}
-
-
-	protected ConsumerRecord<byte[], byte[]> die(String topic, int partition, long offset) {
-		throw new DataException(String.format("Corrupt record at %s-%d:%d", topic, partition, offset));
-	}
-
 }
