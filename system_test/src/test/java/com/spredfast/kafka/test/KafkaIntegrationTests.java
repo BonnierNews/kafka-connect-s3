@@ -1,26 +1,22 @@
 package com.spredfast.kafka.test;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
+import kafka.server.RunningAsBroker;
+import kafka.zk.AdminZkClient;
 import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.connect.runtime.Connect;
-import org.apache.kafka.connect.runtime.ConnectorFactory;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.WorkerConfig;
+import org.apache.kafka.connect.runtime.isolation.Plugins;
 import org.apache.kafka.connect.runtime.rest.RestServer;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.runtime.standalone.StandaloneHerder;
@@ -37,9 +33,11 @@ import com.netflix.curator.test.TestingServer;
 import kafka.admin.AdminUtils;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
-import kafka.utils.SystemTime$;
+import org.apache.kafka.connect.util.ConnectUtils;
 import scala.Option;
 import scala.collection.JavaConversions;
+
+import static org.junit.Assert.*;
 
 public class KafkaIntegrationTests {
 
@@ -119,8 +117,8 @@ public class KafkaIntegrationTests {
 
 	private static KafkaConnect givenKafkaConnect(Map<String, String> props) {
 		WorkerConfig config = new StandaloneConfig(props);
-		Worker worker = new Worker("1", new SystemTime(), new ConnectorFactory(), config, new FileOffsetBackingStore());
-		Herder herder = new StandaloneHerder(worker);
+		Worker worker = new Worker("1", new SystemTime(), new Plugins(Collections.EMPTY_MAP), config, new FileOffsetBackingStore());
+		Herder herder = new StandaloneHerder(worker, ConnectUtils.lookupKafkaClusterId(config));
 		RestServer restServer = new RestServer(config);
 		Connect connect = new Connect(herder, restServer);
 		connect.start();
@@ -168,7 +166,7 @@ public class KafkaIntegrationTests {
 				.put("log.dir", tmpDir.getCanonicalPath())
 				.put("zookeeper.connect", zk.getConnectString())
 				.build(), Functions.toStringFunction()));
-			kafkaServer = new KafkaServer(config, SystemTime$.MODULE$, Option.empty(), JavaConversions.asScalaBuffer(ImmutableList.of()));
+			kafkaServer = new KafkaServer(config, SystemTime.SYSTEM, Option.empty(), JavaConversions.asScalaBuffer(ImmutableList.of()));
 			kafkaServer.startup();
 		}
 
@@ -194,17 +192,19 @@ public class KafkaIntegrationTests {
 		public String createUniqueTopic(String prefix, int partitions, Properties topicConfig) throws InterruptedException {
 			checkReady();
 			String topic = (prefix + UUID.randomUUID().toString().substring(0, 5)).replaceAll("[^a-zA-Z0-9._-]", "_");
-			AdminUtils.createTopic(kafkaServer.zkUtils(), topic, partitions, 1, topicConfig, AdminUtils.createTopic$default$6());
+			AdminZkClient admin = kafkaServer.apis().adminZkClient();
+			admin.createTopic(topic, partitions, 1, topicConfig, admin.createTopic$default$5());
 			waitForPassing(Duration.ofSeconds(5), () -> {
-				assertTrue(AdminUtils.fetchTopicMetadataFromZk(topic, kafkaServer.zkUtils())
-					.partitionMetadata().stream()
-					.allMatch(pm -> !pm.leader().isEmpty()));
+
+				// assert partition metadata leader is not empty ?
+				admin.validateTopicConfig(topic, topicConfig);
 			});
 			return topic;
 		}
 
 		public void updateTopic(String topic, Properties topicConfig) {
-			AdminUtils.changeTopicConfig(kafkaServer.zkUtils(), topic, topicConfig);
+			AdminZkClient admin = kafkaServer.apis().adminZkClient();
+			admin.changeTopicConfig(topic, topicConfig);
 		}
 
 		public void checkReady() throws InterruptedException {
@@ -212,7 +212,7 @@ public class KafkaIntegrationTests {
 		}
 
 		public void checkReady(Duration timeout) throws InterruptedException {
-			waitForPassing(timeout, () -> assertNotNull(kafkaServer.kafkaHealthcheck()));
+			waitForPassing(timeout, () -> assertEquals(RunningAsBroker.state(), kafkaServer.brokerState().currentState()));
 		}
 	}
 

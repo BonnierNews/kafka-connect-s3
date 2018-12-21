@@ -152,6 +152,17 @@ public class S3SourceTask extends SourceTask {
 			try {
 				return getSourceRecords(results);
 			} catch (AmazonS3Exception e) {
+				StringBuilder errorBuilder = new StringBuilder("AmazonS3Exception! "+ e.toString());
+				errorBuilder.append("; XMLError START\n").append(e.getErrorResponseXml()).append("\nEND");
+				if (e.getAdditionalDetails() != null) {
+					errorBuilder.append("; AdditionalDetails = {\n");
+					for (Map.Entry<String, String> entry : e.getAdditionalDetails().entrySet()) {
+						errorBuilder.append("\t").append(entry).append("\n");
+					}
+					errorBuilder.append("\n}");
+				}
+				log.error(errorBuilder.toString(), e);
+
 				if (e.isRetryable()) {
 					log.warn("Retryable error while polling. Will sleep and try again.", e);
 					Thread.sleep(errorBackoff);

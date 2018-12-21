@@ -234,7 +234,7 @@ public class S3FilesReader implements Iterable<S3SourceRecord> {
 
 				// if need the start of the file for the read, let it read it
 				if (reader.isInitRequired() && chunkDescriptor.byte_offset > 0) {
-					try (S3Object object = s3Client.getObject(new GetObjectRequest(config.bucket, offset.getS3key()))) {
+					try (S3Object object = s3Client.getObject(config.bucket, offset.getS3key())) {
 						parseKey(object.getKey(), (topic, partition, startOffset) -> {
 							reader.init(topic, partition, getContent(object), startOffset);
 							return null;

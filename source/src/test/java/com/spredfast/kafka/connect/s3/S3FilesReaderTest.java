@@ -2,7 +2,6 @@ package com.spredfast.kafka.connect.s3;
 
 import static java.util.stream.Collectors.toList;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -20,18 +19,12 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaAndValue;
-import org.apache.kafka.connect.storage.Converter;
-import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
@@ -48,6 +41,14 @@ import com.spredfast.kafka.connect.s3.source.S3Offset;
 import com.spredfast.kafka.connect.s3.source.S3Partition;
 import com.spredfast.kafka.connect.s3.source.S3SourceConfig;
 import com.spredfast.kafka.connect.s3.source.S3SourceRecord;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaAndValue;
+import org.apache.kafka.connect.storage.Converter;
+import org.junit.Test;
+import org.mockito.internal.util.reflection.Whitebox;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 /**
  * Covers S3 and reading raw byte records. Closer to an integration test.
@@ -214,6 +215,8 @@ public class S3FilesReaderTest {
 
 	private AmazonS3 givenAMockS3Client(final Path dir) {
 		final AmazonS3 client = mock(AmazonS3Client.class);
+		Whitebox.setInternalState(client, "requestHandler2s", Collections.emptyList());
+
 		when(client.listObjects(any(ListObjectsRequest.class))).thenAnswer(new Answer<ObjectListing>() {
 			@Override
 			public ObjectListing answer(InvocationOnMock invocationOnMock) throws Throwable {
